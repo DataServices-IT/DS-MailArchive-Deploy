@@ -4,11 +4,9 @@
 #  DataServices © 2026
 #
 #  Depuis le shell de l'hôte Proxmox VE :
-#  bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive/main/install-proxmox.sh)"
+#  bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive-Deploy/main/install-proxmox.sh)"
 # ============================================================
-
-# set -e activé APRES la phase interactive (grep sans résultat, pvesm, etc. ne doivent pas crasher)
-set -uo pipefail
+# Pas de set -e ni pipefail ici — activé uniquement lors de l'installation réelle
 
 # ── COULEURS ET STYLES ────────────────────────────────────
 YW="\033[33m"
@@ -55,7 +53,7 @@ ask_secret() {
   printf '\n'
 }
 
-trap 'msg_error "Installation interrompue à la ligne $LINENO."' ERR
+trap - ERR
 
 # ── VÉRIFICATION PROXMOX ──────────────────────────────────
 if ! command -v pct &>/dev/null; then
@@ -124,7 +122,7 @@ else
 fi
 
 # ── DÉTECTION IP DU BRIDGE (defaults intelligents) ───────
-BRIDGE_CIDR=$(ip addr show "$CT_BRIDGE" 2>/dev/null | awk '/inet /{print $2; exit}')
+BRIDGE_CIDR=$(ip addr show "$CT_BRIDGE" 2>/dev/null | awk '/inet /{print $2; exit}') || BRIDGE_CIDR=""
 if [[ -n "$BRIDGE_CIDR" ]]; then
   _gw="${BRIDGE_CIDR%%/*}"
   _prefix="${BRIDGE_CIDR##*/}"
@@ -234,8 +232,9 @@ case "${confirm,,}" in
 esac
 printf "\n"
 
-# À partir d'ici : set -e activé — toute erreur arrête le script proprement
-set -e
+# À partir d'ici : set -e et pipefail activés — toute erreur arrête le script
+set -euo pipefail
+trap 'msg_error "Installation interrompue à la ligne $LINENO."' ERR
 
 # ══════════════════════════════════════════════════════════
 # INSTALLATION
@@ -243,11 +242,11 @@ set -e
 
 # ── TEMPLATE DEBIAN 12 ────────────────────────────────────
 msg_info "Recherche du template Debian 12"
-TEMPLATE_PATH=$(pveam list local 2>/dev/null | grep "debian-12-standard" | awk '{print $1}' | tail -1)
+TEMPLATE_PATH=$(pveam list local 2>/dev/null | { grep "debian-12-standard" || true; } | awk '{print $1}' | tail -1)
 
 if [[ -z "$TEMPLATE_PATH" ]]; then
   msg_warn "Template non trouvé localement — téléchargement en cours"
-  TEMPLATE_NAME=$(pveam available --section system 2>/dev/null | grep "debian-12-standard" | awk '{print $2}' | tail -1)
+  TEMPLATE_NAME=$(pveam available --section system 2>/dev/null | { grep "debian-12-standard" || true; } | awk '{print $2}' | tail -1)
   if [[ -z "$TEMPLATE_NAME" ]]; then
     msg_error "Impossible de trouver le template Debian 12. Vérifiez la connectivité."
   fi
