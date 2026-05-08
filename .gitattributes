@@ -1,0 +1,24 @@
+# Force les scripts shell en LF (Unix) même sur Windows
+# Sans ça, bash refuse les scripts avec "bad interpreter: \r"
+
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+# Fichiers texte standard — normalisation automatique
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.env   text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.conf  text eol=lf
+
+# Fichiers binaires — pas de conversion
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.gz    binary
+*.zip   binary
