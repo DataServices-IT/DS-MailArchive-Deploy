@@ -91,7 +91,7 @@ printf "  ${BL}${BOLD}Bridges réseau disponibles :${CL}\n"
 while IFS= read -r br; do
   printf "    ${GY}[%s]${CL} %s\n" "$((${#BRIDGES[@]}+1))" "$br"
   BRIDGES+=("$br")
-done < <(ip link show 2>/dev/null | grep -oP '(?<=^\d+: )vmbr\w+' || true)
+done < <(ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: vmbr/{print $2}' | awk '{print $1}' || true)
 [[ ${#BRIDGES[@]} -eq 0 ]] && BRIDGES=("vmbr0")
 printf "\n"
 
