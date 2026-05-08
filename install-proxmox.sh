@@ -37,21 +37,21 @@ msg_ok()    { printf "   ${GN}✔${CL}  %s\n"   "$1"; }
 msg_warn()  { printf "   ${YW}⚠${CL}  %s\n"   "$1"; }
 msg_error() { printf "\n   ${RD}✗${CL}  ${BOLD}ERREUR :${CL} %s\n\n" "$1"; exit 1; }
 
+# Stocke la réponse dans REPLY_VAL — NE PAS appeler via $() sinon sous-shell
+REPLY_VAL=""
 ask() {
-  local prompt="$1" default="$2" val
-  # Redirection vers /dev/tty indispensable : ask() est appelée via $() (sous-shell)
-  # sans ça, printf est capturé et jamais affiché, read attend sans prompt visible
-  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}%s${CL}] : " "$prompt" "$default" >/dev/tty
-  read -r val </dev/tty
-  printf '%s' "${val:-$default}"
+  local prompt="$1" default="$2"
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}%s${CL}] : " "$prompt" "$default"
+  IFS= read -r REPLY_VAL
+  REPLY_VAL="${REPLY_VAL:-$default}"
 }
 
+REPLY_SECRET=""
 ask_secret() {
-  local prompt="$1" val
-  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} : " "$prompt" >/dev/tty
-  read -rs val </dev/tty
-  printf '\n' >/dev/tty
-  printf '%s' "$val"
+  local prompt="$1"
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} : " "$prompt"
+  IFS= read -rs REPLY_SECRET
+  printf '\n'
 }
 
 trap 'msg_error "Installation interrompue à la ligne $LINENO."' ERR
@@ -106,35 +106,35 @@ printf "\n"
 # ── PROMPTS INTERACTIFS ───────────────────────────────────
 printf "  ${BOLD}━━━━━━━━━━━━━━━━━━  Conteneur LXC  ━━━━━━━━━━━━━━━━━━${CL}\n\n"
 
-CT_ID=$(ask      "ID du conteneur"                  "$NEXT_ID")
-HOSTNAME=$(ask   "Nom d'hôte du conteneur"          "ds-mailarchive")
-CT_IP=$(ask      "Adresse IP (format CIDR)"         "192.168.1.100/24")
-CT_GW=$(ask      "Passerelle (gateway)"             "192.168.1.1")
-CT_DNS=$(ask     "Serveur DNS"                      "8.8.8.8")
-CT_BRIDGE=$(ask  "Bridge réseau"                    "vmbr0")
-CT_STORAGE=$(ask "Storage Proxmox"                  "${STORAGES[0]:-local-lvm}")
-CT_DISK=$(ask    "Taille du disque (Go)"            "100")
-CT_RAM=$(ask     "RAM allouée (Mo)"                 "2048")
-CT_CORES=$(ask   "Nombre de cœurs CPU"              "2")
+ask "ID du conteneur"                  "$NEXT_ID"      ; CT_ID="$REPLY_VAL"
+ask "Nom d'hôte du conteneur"          "ds-mailarchive"; HOSTNAME="$REPLY_VAL"
+ask "Adresse IP (format CIDR)"         "192.168.1.100/24"; CT_IP="$REPLY_VAL"
+ask "Passerelle (gateway)"             "192.168.1.1"   ; CT_GW="$REPLY_VAL"
+ask "Serveur DNS"                      "8.8.8.8"       ; CT_DNS="$REPLY_VAL"
+ask "Bridge réseau"                    "vmbr0"         ; CT_BRIDGE="$REPLY_VAL"
+ask "Storage Proxmox"                  "${STORAGES[0]:-local-lvm}"; CT_STORAGE="$REPLY_VAL"
+ask "Taille du disque (Go)"            "100"           ; CT_DISK="$REPLY_VAL"
+ask "RAM allouée (Mo)"                 "2048"          ; CT_RAM="$REPLY_VAL"
+ask "Nombre de cœurs CPU"              "2"             ; CT_CORES="$REPLY_VAL"
 
 printf "\n  ${BOLD}━━━━━━━━━━━━━━━━━━  Application  ━━━━━━━━━━━━━━━━━━━━${CL}\n\n"
 
-APP_PORT=$(ask   "Port HTTP de l'interface web"     "80")
-ADMIN_USER=$(ask "Nom d'utilisateur administrateur" "admin")
-TIMEZONE=$(ask   "Fuseau horaire"                   "Europe/Paris")
+ask "Port HTTP de l'interface web"     "80"            ; APP_PORT="$REPLY_VAL"
+ask "Nom d'utilisateur administrateur" "admin"         ; ADMIN_USER="$REPLY_VAL"
+ask "Fuseau horaire"                   "Europe/Paris"  ; TIMEZONE="$REPLY_VAL"
 
 printf "\n"
 while true; do
-  ADMIN_PASS=$(ask_secret "Mot de passe administrateur")
+  ask_secret "Mot de passe administrateur"  ; ADMIN_PASS="$REPLY_SECRET"
   if [[ -z "$ADMIN_PASS" ]]; then
-    printf "   ${RD}Le mot de passe ne peut pas être vide.${CL}\n" >/dev/tty
+    printf "   ${RD}Le mot de passe ne peut pas être vide.${CL}\n"
     continue
   fi
-  ADMIN_PASS2=$(ask_secret "Confirmer le mot de passe")
+  ask_secret "Confirmer le mot de passe"    ; ADMIN_PASS2="$REPLY_SECRET"
   if [[ "$ADMIN_PASS" == "$ADMIN_PASS2" ]]; then
     break
   fi
-  printf "   ${RD}Les mots de passe ne correspondent pas, recommencez.${CL}\n\n" >/dev/tty
+  printf "   ${RD}Les mots de passe ne correspondent pas, recommencez.${CL}\n\n"
 done
 
 # Mot de passe BDD généré automatiquement (alphanumérique, sans ambiguïté)
@@ -161,8 +161,8 @@ printf "   ${GY}Fuseau        :${CL} ${BOLD}%s${CL}\n"            "$TIMEZONE"
 printf "   ${GY}URL finale    :${CL} ${BOLD}http://%s:%s/${CL}\n" "$CT_IP_ONLY" "$APP_PORT"
 printf "\n"
 
-printf "   ${YW}?${CL}  ${BOLD}Lancer l'installation ?${CL} [${GY}O${CL}/n] : " >/dev/tty
-read -r confirm </dev/tty
+printf "   ${YW}?${CL}  ${BOLD}Lancer l'installation ?${CL} [${GY}O${CL}/n] : "
+IFS= read -r confirm
 case "${confirm,,}" in
   n|no|non) printf "\n   Installation annulée.\n\n"; exit 0 ;;
 esac
