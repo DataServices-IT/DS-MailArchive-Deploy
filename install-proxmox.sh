@@ -345,7 +345,7 @@ set -e
 mkdir -p /opt/ds-mailarchive
 cd /opt/ds-mailarchive
 curl -fsSL \
-  https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive/main/docker-compose.prod.yml \
+  https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive-Deploy/main/docker-compose.prod.yml \
   -o docker-compose.yml
 chmod 600 .env
 docker compose pull
@@ -361,9 +361,15 @@ pct push "$CT_ID" "$SETUP_TMP" /root/setup-ds-mailarchive.sh
 rm -f "$ENV_TMP" "$SETUP_TMP"
 
 # ── DÉPLOIEMENT DE LA STACK ───────────────────────────────
-pct exec "$CT_ID" -- bash /root/setup-ds-mailarchive.sh &>/dev/null &
-spin $! "Téléchargement des images et démarrage de la stack"
-wait $!
+pct exec "$CT_ID" -- bash /root/setup-ds-mailarchive.sh &>/tmp/ds-setup.log &
+SETUP_PID=$!
+spin $SETUP_PID "Téléchargement des images et démarrage de la stack"
+if ! wait $SETUP_PID; then
+  printf "\n"
+  msg_warn "Erreur lors du déploiement. Logs :"
+  cat /tmp/ds-setup.log 2>/dev/null || true
+  msg_error "Le déploiement de la stack a échoué. Vérifiez les logs ci-dessus."
+fi
 msg_ok "Stack DS-MailArchive déployée"
 
 # ── ATTENTE DE DISPONIBILITÉ ──────────────────────────────
