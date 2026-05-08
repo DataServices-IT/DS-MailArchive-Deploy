@@ -38,17 +38,19 @@ msg_warn()  { printf "   ${YW}⚠${CL}  %s\n"   "$1"; }
 msg_error() { printf "\n   ${RD}✗${CL}  ${BOLD}ERREUR :${CL} %s\n\n" "$1"; exit 1; }
 
 ask() {
-  local prompt="$1" default="$2"
-  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}%s${CL}] : " "$prompt" "$default"
-  read -r val
+  local prompt="$1" default="$2" val
+  # Redirection vers /dev/tty indispensable : ask() est appelée via $() (sous-shell)
+  # sans ça, printf est capturé et jamais affiché, read attend sans prompt visible
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}%s${CL}] : " "$prompt" "$default" >/dev/tty
+  read -r val </dev/tty
   printf '%s' "${val:-$default}"
 }
 
 ask_secret() {
-  local prompt="$1"
-  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} : " "$prompt"
-  read -rs val
-  printf '\n'
+  local prompt="$1" val
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} : " "$prompt" >/dev/tty
+  read -rs val </dev/tty
+  printf '\n' >/dev/tty
   printf '%s' "$val"
 }
 
@@ -125,14 +127,14 @@ printf "\n"
 while true; do
   ADMIN_PASS=$(ask_secret "Mot de passe administrateur")
   if [[ -z "$ADMIN_PASS" ]]; then
-    printf "   ${RD}Le mot de passe ne peut pas être vide.${CL}\n"
+    printf "   ${RD}Le mot de passe ne peut pas être vide.${CL}\n" >/dev/tty
     continue
   fi
   ADMIN_PASS2=$(ask_secret "Confirmer le mot de passe")
   if [[ "$ADMIN_PASS" == "$ADMIN_PASS2" ]]; then
     break
   fi
-  printf "   ${RD}Les mots de passe ne correspondent pas, recommencez.${CL}\n\n"
+  printf "   ${RD}Les mots de passe ne correspondent pas, recommencez.${CL}\n\n" >/dev/tty
 done
 
 # Mot de passe BDD généré automatiquement (alphanumérique, sans ambiguïté)
@@ -159,8 +161,8 @@ printf "   ${GY}Fuseau        :${CL} ${BOLD}%s${CL}\n"            "$TIMEZONE"
 printf "   ${GY}URL finale    :${CL} ${BOLD}http://%s:%s/${CL}\n" "$CT_IP_ONLY" "$APP_PORT"
 printf "\n"
 
-printf "   ${YW}?${CL}  ${BOLD}Lancer l'installation ?${CL} [${GY}O${CL}/n] : "
-read -r confirm
+printf "   ${YW}?${CL}  ${BOLD}Lancer l'installation ?${CL} [${GY}O${CL}/n] : " >/dev/tty
+read -r confirm </dev/tty
 case "${confirm,,}" in
   n|no|non) printf "\n   Installation annulée.\n\n"; exit 0 ;;
 esac
