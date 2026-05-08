@@ -7,7 +7,8 @@
 #  bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive/main/install-proxmox.sh)"
 # ============================================================
 
-set -Eeuo pipefail
+# set -e activé APRES la phase interactive (grep sans résultat, pvesm, etc. ne doivent pas crasher)
+set -uo pipefail
 
 # ── COULEURS ET STYLES ────────────────────────────────────
 YW="\033[33m"
@@ -90,7 +91,7 @@ printf "  ${BL}${BOLD}Bridges réseau disponibles :${CL}\n"
 while IFS= read -r br; do
   printf "    ${GY}[%s]${CL} %s\n" "$((${#BRIDGES[@]}+1))" "$br"
   BRIDGES+=("$br")
-done < <(ip link show 2>/dev/null | grep -oP '(?<=^\d+: )vmbr\w+')
+done < <(ip link show 2>/dev/null | grep -oP '(?<=^\d+: )vmbr\w+' || true)
 [[ ${#BRIDGES[@]} -eq 0 ]] && BRIDGES=("vmbr0")
 printf "\n"
 
@@ -102,7 +103,7 @@ while IFS= read -r line; do
   s_type=$(echo "$line" | awk '{print $2}')
   printf "    ${GY}[%s]${CL} %-20s %s\n" "$((${#STORAGES[@]}+1))" "$s_name" "(${s_type})"
   STORAGES+=("$s_name")
-done < <(pvesm status --content rootdir 2>/dev/null | tail -n +2)
+done < <(pvesm status --content rootdir 2>/dev/null | tail -n +2 || true)
 [[ ${#STORAGES[@]} -eq 0 ]] && STORAGES=("local-lvm")
 printf "\n"
 
@@ -232,6 +233,9 @@ case "${confirm,,}" in
   n|no|non) printf "\n   Installation annulée.\n\n"; exit 0 ;;
 esac
 printf "\n"
+
+# À partir d'ici : set -e activé — toute erreur arrête le script proprement
+set -e
 
 # ══════════════════════════════════════════════════════════
 # INSTALLATION
