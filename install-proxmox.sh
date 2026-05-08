@@ -84,38 +84,95 @@ printf "\n"
 # ── DÉTECTION CTID SUIVANT ────────────────────────────────
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo "200")
 
-# ── LISTE DES STORAGES DISPONIBLES ───────────────────────
-printf "  ${BL}${BOLD}Storages disponibles sur cet hôte :${CL}\n"
-STORAGES=()
-while IFS= read -r line; do
-  name=$(echo "$line" | awk '{print $1}')
-  type=$(echo "$line" | awk '{print $2}')
-  avail=$(echo "$line" | awk '{print $5}')
-  printf "    ${GY}•${CL} %-20s %s\n" "$name" "(${type})"
-  STORAGES+=("$name")
-done < <(pvesm status --content rootdir 2>/dev/null | tail -n +2)
+# ── LISTE DES BRIDGES RÉSEAU (numérotée) ─────────────────
+BRIDGES=()
+printf "  ${BL}${BOLD}Bridges réseau disponibles :${CL}\n"
+while IFS= read -r br; do
+  printf "    ${GY}[%s]${CL} %s\n" "$((${#BRIDGES[@]}+1))" "$br"
+  BRIDGES+=("$br")
+done < <(ip link show 2>/dev/null | grep -oP '(?<=^\d+: )vmbr\w+')
+[[ ${#BRIDGES[@]} -eq 0 ]] && BRIDGES=("vmbr0")
 printf "\n"
 
-# ── LISTE DES BRIDGES RÉSEAU ─────────────────────────────
-printf "  ${BL}${BOLD}Bridges réseau disponibles :${CL}\n"
-ip link show | grep -oP '(?<=^\d+: )vmbr\w+' 2>/dev/null | while read -r br; do
-  printf "    ${GY}•${CL} %s\n" "$br"
-done || true
+# ── LISTE DES STORAGES DISPONIBLES (numérotée) ───────────
+STORAGES=()
+printf "  ${BL}${BOLD}Storages disponibles sur cet hôte :${CL}\n"
+while IFS= read -r line; do
+  s_name=$(echo "$line" | awk '{print $1}')
+  s_type=$(echo "$line" | awk '{print $2}')
+  printf "    ${GY}[%s]${CL} %-20s %s\n" "$((${#STORAGES[@]}+1))" "$s_name" "(${s_type})"
+  STORAGES+=("$s_name")
+done < <(pvesm status --content rootdir 2>/dev/null | tail -n +2)
+[[ ${#STORAGES[@]} -eq 0 ]] && STORAGES=("local-lvm")
 printf "\n"
 
 # ── PROMPTS INTERACTIFS ───────────────────────────────────
 printf "  ${BOLD}━━━━━━━━━━━━━━━━━━  Conteneur LXC  ━━━━━━━━━━━━━━━━━━${CL}\n\n"
 
-ask "ID du conteneur"                  "$NEXT_ID"      ; CT_ID="$REPLY_VAL"
-ask "Nom d'hôte du conteneur"          "ds-mailarchive"; HOSTNAME="$REPLY_VAL"
-ask "Adresse IP (format CIDR)"         "192.168.1.100/24"; CT_IP="$REPLY_VAL"
-ask "Passerelle (gateway)"             "192.168.1.1"   ; CT_GW="$REPLY_VAL"
-ask "Serveur DNS"                      "8.8.8.8"       ; CT_DNS="$REPLY_VAL"
-ask "Bridge réseau"                    "vmbr0"         ; CT_BRIDGE="$REPLY_VAL"
-ask "Storage Proxmox"                  "${STORAGES[0]:-local-lvm}"; CT_STORAGE="$REPLY_VAL"
-ask "Taille du disque (Go)"            "100"           ; CT_DISK="$REPLY_VAL"
-ask "RAM allouée (Mo)"                 "2048"          ; CT_RAM="$REPLY_VAL"
-ask "Nombre de cœurs CPU"              "2"             ; CT_CORES="$REPLY_VAL"
+ask "ID du conteneur"         "$NEXT_ID"       ; CT_ID="$REPLY_VAL"
+ask "Nom d'hôte du conteneur" "ds-mailarchive" ; HOSTNAME="$REPLY_VAL"
+
+# ── BRIDGE RÉSEAU ────────────────────────────────────────
+if [[ ${#BRIDGES[@]} -eq 1 ]]; then
+  CT_BRIDGE="${BRIDGES[0]}"
+  printf "   ${GN}✔${CL}  Bridge réseau : ${BOLD}%s${CL} (seul bridge disponible)\n" "$CT_BRIDGE"
+else
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}1${CL}] : " "Bridge réseau (numéro)"
+  IFS= read -r _bc ; _bc="${_bc:-1}"
+  CT_BRIDGE="${BRIDGES[$((_bc-1))]:-${BRIDGES[0]}}"
+fi
+
+# ── DÉTECTION IP DU BRIDGE (defaults intelligents) ───────
+BRIDGE_CIDR=$(ip addr show "$CT_BRIDGE" 2>/dev/null | awk '/inet /{print $2; exit}')
+if [[ -n "$BRIDGE_CIDR" ]]; then
+  _gw="${BRIDGE_CIDR%%/*}"
+  _prefix="${BRIDGE_CIDR##*/}"
+  _net=$(echo "$_gw" | cut -d. -f1-3)
+  DEFAULT_GW="$_gw"
+  DEFAULT_IP="${_net}.200/${_prefix}"
+  DEFAULT_DNS="$_gw"
+else
+  DEFAULT_GW="192.168.1.1"
+  DEFAULT_IP="192.168.1.200/24"
+  DEFAULT_DNS="8.8.8.8"
+fi
+
+# ── MODE RÉSEAU : DHCP OU IP STATIQUE ────────────────────
+printf "\n"
+printf "   ${YW}?${CL}  ${BOLD}Configuration réseau du conteneur :${CL}\n"
+printf "       ${GY}[1]${CL} DHCP    — adresse IP automatique ${GY}(défaut)${CL}\n"
+printf "       ${GY}[2]${CL} Statique — adresse IP fixe\n"
+printf "   ${YW}?${CL}  ${BOLD}Votre choix${CL} [${GY}1${CL}] : "
+IFS= read -r _nc ; _nc="${_nc:-1}"
+
+if [[ "$_nc" == "2" ]]; then
+  CT_NET_MODE="static"
+  printf "\n"
+  ask "Adresse IP du conteneur (CIDR)" "$DEFAULT_IP" ; CT_IP="$REPLY_VAL"
+  ask "Passerelle (gateway)"           "$DEFAULT_GW" ; CT_GW="$REPLY_VAL"
+  ask "Serveur DNS"                    "$DEFAULT_DNS" ; CT_DNS="$REPLY_VAL"
+else
+  CT_NET_MODE="dhcp"
+  CT_IP="dhcp"
+  CT_GW=""
+  CT_DNS="$DEFAULT_DNS"
+  printf "   ${GN}✔${CL}  Réseau DHCP — adresse assignée automatiquement\n"
+fi
+
+# ── STORAGE (choix numéroté) ──────────────────────────────
+printf "\n"
+if [[ ${#STORAGES[@]} -eq 1 ]]; then
+  CT_STORAGE="${STORAGES[0]}"
+  printf "   ${GN}✔${CL}  Storage : ${BOLD}%s${CL} (seul storage disponible)\n" "$CT_STORAGE"
+else
+  printf "   ${YW}?${CL}  ${BOLD}%-35s${CL} [${GY}1${CL}] : " "Storage Proxmox (numéro)"
+  IFS= read -r _sc ; _sc="${_sc:-1}"
+  CT_STORAGE="${STORAGES[$((_sc-1))]:-${STORAGES[0]}}"
+fi
+
+ask "Taille du disque (Go)"   "100"  ; CT_DISK="$REPLY_VAL"
+ask "RAM allouée (Mo)"        "2048" ; CT_RAM="$REPLY_VAL"
+ask "Nombre de cœurs CPU"     "2"    ; CT_CORES="$REPLY_VAL"
 
 printf "\n  ${BOLD}━━━━━━━━━━━━━━━━━━  Application  ━━━━━━━━━━━━━━━━━━━━${CL}\n\n"
 
@@ -143,15 +200,20 @@ set +o pipefail
 DB_PASS=$(tr -dc 'A-Za-z0-9' </dev/urandom | tr -d 'lIO0' | head -c 32)
 set -o pipefail
 
-# IP sans le masque (pour affichage et Health Check)
+# IP sans le masque — pour DHCP on détecte après démarrage du CT
 CT_IP_ONLY="${CT_IP%%/*}"
+[[ "$CT_NET_MODE" == "dhcp" ]] && CT_IP_ONLY="dhcp"
 
 # ── RÉSUMÉ AVANT LANCEMENT ────────────────────────────────
 printf "\n"
 printf "  ${BOLD}━━━━━━━━━━━━━━━━━━  Récapitulatif  ━━━━━━━━━━━━━━━━━━${CL}\n\n"
 printf "   ${GY}CT ID         :${CL} ${BOLD}%s${CL}\n"            "$CT_ID"
 printf "   ${GY}Hostname      :${CL} ${BOLD}%s${CL}\n"            "$HOSTNAME"
-printf "   ${GY}Adresse IP    :${CL} ${BOLD}%s${CL}  (GW: %s)\n" "$CT_IP" "$CT_GW"
+if [[ "$CT_NET_MODE" == "dhcp" ]]; then
+  printf "   ${GY}Réseau        :${CL} ${BOLD}DHCP (IP automatique via %s)${CL}\n" "$CT_BRIDGE"
+else
+  printf "   ${GY}Adresse IP    :${CL} ${BOLD}%s${CL}  (GW: %s)\n" "$CT_IP" "$CT_GW"
+fi
 printf "   ${GY}DNS           :${CL} ${BOLD}%s${CL}\n"            "$CT_DNS"
 printf "   ${GY}Bridge        :${CL} ${BOLD}%s${CL}\n"            "$CT_BRIDGE"
 printf "   ${GY}Storage       :${CL} ${BOLD}%s${CL}\n"            "$CT_STORAGE"
@@ -205,7 +267,7 @@ pct create "$CT_ID" "$TEMPLATE_PATH" \
   --memory      "$CT_RAM"             \
   --swap        512                   \
   --rootfs      "${CT_STORAGE}:${CT_DISK}" \
-  --net0        "name=eth0,bridge=${CT_BRIDGE},ip=${CT_IP},gw=${CT_GW}" \
+  --net0        "name=eth0,bridge=${CT_BRIDGE},ip=${CT_IP}${CT_GW:+,gw=${CT_GW}}" \
   --nameserver  "$CT_DNS"             \
   --unprivileged 1                    \
   --features    "nesting=1"           \
@@ -227,6 +289,20 @@ for i in $(seq 1 30); do
   sleep 3
 done
 msg_ok "Conteneur démarré et réseau actif"
+
+# En mode DHCP, récupérer l'IP réellement attribuée
+if [[ "$CT_NET_MODE" == "dhcp" ]]; then
+  msg_info "Récupération de l'adresse IP DHCP"
+  for i in $(seq 1 15); do
+    _detected=$(pct exec "$CT_ID" -- hostname -I 2>/dev/null | awk '{print $1}')
+    if [[ -n "$_detected" && "$_detected" != "127.0.0.1" ]]; then
+      CT_IP_ONLY="$_detected"
+      break
+    fi
+    sleep 2
+  done
+  msg_ok "Adresse IP attribuée : ${CT_IP_ONLY}"
+fi
 
 # ── MISE À JOUR SYSTÈME ───────────────────────────────────
 pct exec "$CT_ID" -- bash -c "
