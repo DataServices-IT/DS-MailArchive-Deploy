@@ -4,15 +4,12 @@
 #
 #  ✅ Utilise les images pré-buildées depuis GHCR
 #  ✅ Aucune compilation locale requise
-#  ✅ Aucun git clone nécessaire — juste Docker
+#  ✅ Images publiques — aucun token nécessaire
 #
-#  Prérequis :
-#    docker login ghcr.io -u <votre-user-github> -p <token>
-#
-#  Installation rapide (Proxmox / Synology / Linux) :
-#    mkdir ds-mailarchive && cd ds-mailarchive
-#    curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive/main/docker-compose.prod.yml -o docker-compose.yml
-#    curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive/main/.env.example -o .env
+#  Installation rapide (Proxmox / Synology / Linux / Raspberry Pi) :
+#    mkdir -p /opt/ds-mailarchive && cd /opt/ds-mailarchive
+#    curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive-Deploy/main/docker-compose.prod.yml -o docker-compose.yml
+#    curl -fsSL https://raw.githubusercontent.com/DataServices-IT/DS-MailArchive-Deploy/main/.env.example -o .env
 #    nano .env          # Renseigner les mots de passe
 #    docker compose up -d
 # ============================================================
