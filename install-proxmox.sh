@@ -138,7 +138,10 @@ while true; do
 done
 
 # Mot de passe BDD généré automatiquement (alphanumérique, sans ambiguïté)
+# set +o pipefail : head -c coupe le pipe de tr → SIGPIPE 141 sinon avec set -o pipefail
+set +o pipefail
 DB_PASS=$(tr -dc 'A-Za-z0-9' </dev/urandom | tr -d 'lIO0' | head -c 32)
+set -o pipefail
 
 # IP sans le masque (pour affichage et Health Check)
 CT_IP_ONLY="${CT_IP%%/*}"
@@ -191,7 +194,9 @@ msg_ok "Template Debian 12 : $TEMPLATE_PATH"
 
 # ── CRÉATION DU LXC ───────────────────────────────────────
 msg_info "Création du conteneur CT${CT_ID}"
+set +o pipefail
 CT_ROOT_PASS=$(tr -dc 'A-Za-z0-9@#%-' </dev/urandom | head -c 24)
+set -o pipefail
 
 pct create "$CT_ID" "$TEMPLATE_PATH" \
   --hostname    "$HOSTNAME"           \
